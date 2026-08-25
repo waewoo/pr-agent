@@ -1,0 +1,66 @@
+name: Apply PR 2719 review follow-up
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-pr2719-followup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/gitlab-project-id-mr-url
+          fetch-depth: 0
+
+      - name: Apply canonical GitLab line-link fix and tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          provider_path = Path('pr_agent/git_providers/gitlab_provider.py')
+          text = provider_path.read_text()
+
+          old = '''    def get_line_link(self, relevant_file: str, relevant_line_start: int, relevant_line_end: int = None) -> str:\n        if relevant_line_start == -1:\n            link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads"\n        elif relevant_line_end:\n            link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}-{relevant_line_end}"\n        else:\n            link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}"\n        return link\n'''
+          new = '''    def _get_project_web_url(self) -> str:\n        mr_web_url = getattr(self.mr, 'web_url', '')\n        if '/-/merge_requests/' in mr_web_url:\n            return mr_web_url.split('/-/merge_requests/', 1)[0]\n        return f"{self.gl.url}/{self.id_project}"\n\n    def get_line_link(self, relevant_file: str, relevant_line_start: int, relevant_line_end: int = None) -> str:\n        project_web_url = self._get_project_web_url()\n        if relevant_line_start == -1:\n            link = f"{project_web_url}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads"\n        elif relevant_line_end:\n            link = f"{project_web_url}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}-{relevant_line_end}"\n        else:\n            link = f"{project_web_url}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}"\n        return link\n'''
+          if old not in text:
+              raise SystemExit('get_line_link block not found; refusing unsafe edit')
+          text = text.replace(old, new, 1)
+
+          old_generate = '''                # link to right file only\n                link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{absolute_position}"\n\n                # # link to diff\n'''
+          new_generate = '''                # link to right file only\n                link = self.get_line_link(relevant_file, absolute_position)\n\n                # # link to diff\n'''
+          if old_generate not in text:
+              raise SystemExit('generate_link block not found; refusing unsafe edit')
+          text = text.replace(old_generate, new_generate, 1)
+          provider_path.write_text(text)
+
+          test_path = Path('tests/unittest/test_gitlab_provider_mr_url.py')
+          tests = test_path.read_text()
+          if 'from types import SimpleNamespace\n' not in tests:
+              tests = 'from types import SimpleNamespace\n\n' + tests
+
+          extra = '''\n\ndef test_get_line_link_uses_canonical_project_url_for_numeric_project_id():\n    provider = _provider()\n    provider.id_project = "127014"\n    provider.gl = SimpleNamespace(url="https://gitlab.example.com")\n    provider.mr = SimpleNamespace(\n        web_url="https://gitlab.example.com/group/project/-/merge_requests/30",\n        source_branch="feature/test",\n    )\n\n    assert provider.get_line_link("src/app.py", 12, 14) == (\n        "https://gitlab.example.com/group/project/-/blob/feature/test/src/app.py"\n        "?ref_type=heads#L12-14"\n    )\n\n\ndef test_get_line_link_keeps_standard_project_path():\n    provider = _provider()\n    provider.id_project = "group/project"\n    provider.gl = SimpleNamespace(url="https://gitlab.example.com")\n    provider.mr = SimpleNamespace(\n        web_url="https://gitlab.example.com/group/project/-/merge_requests/1",\n        source_branch="feature/test",\n    )\n\n    assert provider.get_line_link("src/app.py", 8) == (\n        "https://gitlab.example.com/group/project/-/blob/feature/test/src/app.py"\n        "?ref_type=heads#L8"\n    )\n'''
+          if 'test_get_line_link_uses_canonical_project_url_for_numeric_project_id' not in tests:
+              tests = tests.rstrip() + extra + '\n'
+          test_path.write_text(tests)
+          PY
+
+          python -m py_compile pr_agent/git_providers/gitlab_provider.py tests/unittest/test_gitlab_provider_mr_url.py
+          git diff --check
+          git diff
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "waewoo"
+          git config user.email "ftzpr-inconnu@yahoo.fr"
+          git add pr_agent/git_providers/gitlab_provider.py tests/unittest/test_gitlab_provider_mr_url.py
+          git commit -m "fix(gitlab): preserve canonical file links for numeric project ids"
+          git push origin HEAD:fix/gitlab-project-id-mr-url

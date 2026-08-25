@@ -48,7 +48,7 @@ jobs:
 
           extra = '''\n\ndef test_get_line_link_uses_canonical_project_url_for_numeric_project_id():\n    provider = _provider()\n    provider.id_project = "127014"\n    provider.gl = SimpleNamespace(url="https://gitlab.example.com")\n    provider.mr = SimpleNamespace(\n        web_url="https://gitlab.example.com/group/project/-/merge_requests/30",\n        source_branch="feature/test",\n    )\n\n    assert provider.get_line_link("src/app.py", 12, 14) == (\n        "https://gitlab.example.com/group/project/-/blob/feature/test/src/app.py"\n        "?ref_type=heads#L12-14"\n    )\n\n\ndef test_get_line_link_keeps_standard_project_path():\n    provider = _provider()\n    provider.id_project = "group/project"\n    provider.gl = SimpleNamespace(url="https://gitlab.example.com")\n    provider.mr = SimpleNamespace(\n        web_url="https://gitlab.example.com/group/project/-/merge_requests/1",\n        source_branch="feature/test",\n    )\n\n    assert provider.get_line_link("src/app.py", 8) == (\n        "https://gitlab.example.com/group/project/-/blob/feature/test/src/app.py"\n        "?ref_type=heads#L8"\n    )\n'''
           if 'test_get_line_link_uses_canonical_project_url_for_numeric_project_id' not in tests:
-              tests = tests.rstrip() + extra + '\n'
+              tests = tests.rstrip() + extra
           test_path.write_text(tests)
           PY
 

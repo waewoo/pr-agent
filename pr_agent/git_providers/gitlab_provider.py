@@ -1448,13 +1448,20 @@ class GitLabProvider(GitProvider):
         except:
             return ""
 
+    def _get_project_web_url(self) -> str:
+        mr_web_url = getattr(self.mr, 'web_url', '')
+        if '/-/merge_requests/' in mr_web_url:
+            return mr_web_url.split('/-/merge_requests/', 1)[0]
+        return f"{self.gl.url}/{self.id_project}"
+
     def get_line_link(self, relevant_file: str, relevant_line_start: int, relevant_line_end: int = None) -> str:
+        project_web_url = self._get_project_web_url()
         if relevant_line_start == -1:
-            link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads"
+            link = f"{project_web_url}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads"
         elif relevant_line_end:
-            link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}-{relevant_line_end}"
+            link = f"{project_web_url}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}-{relevant_line_end}"
         else:
-            link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}"
+            link = f"{project_web_url}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{relevant_line_start}"
         return link
 
 
@@ -1470,7 +1477,7 @@ class GitLabProvider(GitProvider):
 
             if absolute_position != -1:
                 # link to right file only
-                link = f"{self.gl.url}/{self.id_project}/-/blob/{self.mr.source_branch}/{relevant_file}?ref_type=heads#L{absolute_position}"
+                link = self.get_line_link(relevant_file, absolute_position)
 
                 # # link to diff
                 # sha_file = hashlib.sha1(relevant_file.encode('utf-8')).hexdigest()

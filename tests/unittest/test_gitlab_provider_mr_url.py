@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from pr_agent.git_providers.gitlab_provider import GitLabProvider
 
 
@@ -41,3 +43,32 @@ def test_parse_merge_request_url_does_not_strip_projects_from_namespace():
 
     assert project == "group/projects/project"
     assert mr_id == 7
+
+def test_get_line_link_uses_canonical_project_url_for_numeric_project_id():
+    provider = _provider()
+    provider.id_project = "127014"
+    provider.gl = SimpleNamespace(url="https://gitlab.example.com")
+    provider.mr = SimpleNamespace(
+        web_url="https://gitlab.example.com/group/project/-/merge_requests/30",
+        source_branch="feature/test",
+    )
+
+    assert provider.get_line_link("src/app.py", 12, 14) == (
+        "https://gitlab.example.com/group/project/-/blob/feature/test/src/app.py"
+        "?ref_type=heads#L12-14"
+    )
+
+
+def test_get_line_link_keeps_standard_project_path():
+    provider = _provider()
+    provider.id_project = "group/project"
+    provider.gl = SimpleNamespace(url="https://gitlab.example.com")
+    provider.mr = SimpleNamespace(
+        web_url="https://gitlab.example.com/group/project/-/merge_requests/1",
+        source_branch="feature/test",
+    )
+
+    assert provider.get_line_link("src/app.py", 8) == (
+        "https://gitlab.example.com/group/project/-/blob/feature/test/src/app.py"
+        "?ref_type=heads#L8"
+    )
